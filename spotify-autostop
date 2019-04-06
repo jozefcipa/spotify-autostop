@@ -1,0 +1,116 @@
+#!/bin/bash
+# Script to stop playing Spotify music after given time
+# Author: Jozef Cipa <cipajozef@gmail.com>
+# Date: 6.4.2019
+
+# Variables
+# ------------------------------------------------------ 
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+RESET_COLOR='\033[0m' # No Color
+
+# Functions
+# ------------------------------------------------------ 
+check_number () {
+    if ! [[ "$1" =~ ^[0-9]+$ ]]
+    then
+        printf "${RED}Please enter valid number of minutes${RESET_COLOR}\n"
+        exit -1
+    fi
+}
+
+loading () {
+    local -r delay='0.5'
+    local spinstr='\|/-'
+    local temp
+    while true; do
+        temp="${spinstr#?}"
+        printf " [%c]  " "${spinstr}"
+        spinstr=${temp}${spinstr%"${temp}"}
+        sleep "${delay}"
+        printf "\b\b\b\b\b\b"
+    done
+    printf "    \b\b\b\b"
+}
+
+before_exit () {
+    pkill -P $$ # Stop child processes before exit
+}
+
+stop_script () {
+    before_exit
+    printf "${RED}\n❌ Script interrupted - Spotify won't be stopped${RESET_COLOR}\n"
+    exit
+}
+
+set_volume () {
+    osascript -e "set volume output volume $1 --100%"
+}
+
+fade_out_volume () {
+    current_value=$1
+    steps=5 # Number of fading steps
+    final_volume_percentage=.1 # The faded out volume will be 10% of current volume
+    # We use bc -l command here because Bash natively doesnt work with floating point
+    final_value=$(echo "$current_value * $final_volume_percentage" | bc -l)
+    step=$(echo "($current_value - $final_value) / $steps" | bc -l) # Calculate fade out step
+    # Fade out
+    for i in $(seq 1 $steps)
+    do
+        set_volume $(echo "$current_value - ($step * $i)" | bc -l)
+        sleep 0.2 # Wait 200ms between fading steps
+    done
+}
+
+stop_playing () {
+    # Get current volume as a number from 0 to 100
+    current_volume=$(osascript -e "output volume of (get volume settings)")
+
+    # Fade out volume and then stop music
+    fade_out_volume $current_volume
+    osascript <<'END'
+        using terms from application "Spotify"
+            tell application "Spotify" to pause
+        end using terms from
+END
+
+    # Reset volume to original level
+    set_volume $current_volume
+}
+
+# App Start
+# ------------------------------------------------------ 
+
+# Signal handlers
+trap stop_script SIGINT
+trap stop_script SIGTERM
+
+printf "${GREEN}"
+printf "┏━━━━━━━━━━━━━━━━━━┓\n"
+printf "┃ Spotify autostop ┃\n"
+printf "┗━━━━━━━━━━━━━━━━━━┛\n"
+printf "${RESET_COLOR}"
+printf "⏱  Time to stop playing [minutes]: "
+
+# Read and validate minutes
+read minutes
+check_number $minutes
+
+printf "${YELLOW}⏳ Spotify will stop playing in %s min from now (%s) ...${RESET_COLOR}" $minutes "$(date +"%H:%M %p")"
+loading & # Show loader
+
+# Wait until time passes
+current_timestamp=$(date +"%s")
+stop_timestamp=$(($current_timestamp + ($minutes * 60)))
+while [  $(date +"%s") -lt $stop_timestamp ]; do
+    sleep 1
+done
+
+# Prepare script to exit
+before_exit
+
+# Stop Spotify playing
+stop_playing
+
+printf "\n${YELLOW}⏹  Spotify stopped at %s${RESET_COLOR}\n" "$(date +"%H:%M %p")"
