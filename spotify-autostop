@@ -97,7 +97,7 @@ printf "⏱  Time to stop playing [minutes]: "
 read minutes
 check_number $minutes
 
-printf "${YELLOW}⏳ Spotify will stop playing in %s min from now (%s) ...${RESET_COLOR}" $minutes "$(date +"%H:%M %p")"
+printf "${YELLOW}⏳ Spotify will stop playing in %s min from now (now: %s) (at: %s) ...${RESET_COLOR}" $minutes "$(date +"%H:%M %p")" "$(date -v+${minutes}M +"%H:%M %p")"
 loading & # Show loader
 
 # Wait until time passes
